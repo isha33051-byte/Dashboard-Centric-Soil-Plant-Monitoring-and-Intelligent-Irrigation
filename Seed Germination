@@ -1,0 +1,78 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import classification_report, accuracy_score
+from google.colab import files
+import joblib
+import io
+
+
+print("Please upload 'AS7341_Germination_Dataset (1).csv'")
+uploaded = files.upload()
+file_name = list(uploaded.keys())[0]
+df = pd.read_csv(io.BytesIO(uploaded[file_name]))
+
+
+feature_cols = ['415nm', '445nm', '480nm', '515nm', '555nm', '590nm',
+                '630nm', '680nm', 'Temperature_C', 'Soil_Moisture_ADC', 'Moisture_Percentage']
+
+X = df[feature_cols].values
+y = df['Germination_Status'].values
+
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2,
+                                                    random_state=42, stratify=y_encoded)
+
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+
+noise_factor = 0.55
+np.random.seed(42)
+X_train_noisy = X_train_scaled + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=X_train_scaled.shape)
+
+
+rf_model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=3,
+    min_samples_leaf=100,
+    random_state=42
+)
+
+print("\n Training Seed Germination Model...")
+rf_model.fit(X_train_noisy, y_train)
+
+
+y_pred = rf_model.predict(X_test_scaled)
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\n FINAL ACCURACY: {accuracy*100:.2f}%")
+
+
+def predict_with_noise_model(name, values):
+    input_data = np.array(values).reshape(1, -1)
+    scaled_input = scaler.transform(input_data)
+    prediction = rf_model.predict(scaled_input)
+    status = encoder.classes_[prediction[0]]
+    print(f"Test Case {name}: Result -> {status}")
+
+print("\n--- Running Verification ---")
+
+predict_with_noise_model("Optimal Success", [20, 65, 75, 105, 115, 135, 155, 145, 17.8, 110, 58])
+
+predict_with_noise_model("Borderline Delay", [14, 32, 45, 58, 68, 72, 98, 88, 13.5, 172, 44])
+
+predict_with_noise_model("Germination Delay", [9, 14, 19, 24, 32, 44, 58, 52, 10.5, 315, 9])
+
+
+model_filename = 'Seed_Germination_Model.pkl'
+joblib.dump(rf_model, model_filename)
+
+print(f"\n {model_filename} created successfully.")
+files.download(model_filename)
