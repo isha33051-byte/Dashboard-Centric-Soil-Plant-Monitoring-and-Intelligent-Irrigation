@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import classification_report, accuracy_score
+from google.colab import files
+import joblib
+import io
+
+
+print("Please upload 'NPK_Spike_Dataset.csv'")
+uploaded = files.upload()
+df = pd.read_csv(io.BytesIO(uploaded[list(uploaded.keys())[0]]))
+
+
+feature_cols = ['415nm', '445nm', '480nm', '515nm', '555nm', '590nm', '630nm', '680nm']
+X = df[feature_cols].values
+y = df['NPK_Status'].values
+
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2,
+                                                    random_state=42, stratify=y_encoded)
+
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+
+noise_level = 2.1
+np.random.seed(42)
+X_train_noisy = X_train_scaled + noise_level * np.random.normal(size=X_train_scaled.shape)
+
+
+rf_model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=1,
+    random_state=42
+)
+
+print("\n Training NPK Model...")
+rf_model.fit(X_train_noisy, y_train)
+
+
+y_pred = rf_model.predict(X_test_scaled)
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\n FINAL ACCURACY: {accuracy*100:.2f}%")
+
+
+def predict_npk(name, values):
+    input_data = np.array(values).reshape(1, -1)
+    scaled_input = scaler.transform(input_data)
+    prediction = rf_model.predict(scaled_input)
+    status = encoder.classes_[prediction[0]]
+    print(f"Test Case {name}: Identified Nutrient -> {status}")
+
+print("\n--- Running Verification ---")
+predict_npk("Nitrogen", [30, 250, 40, 25, 20, 15, 10, 12])
+predict_npk("Phosphorus", [15, 20, 25, 30, 245, 35, 20, 18])
+predict_npk("Potassium", [10, 12, 15, 18, 20, 25, 30, 255])
+
+
+model_filename = 'NPK_Analysis_Model.pkl'
+joblib.dump(rf_model, model_filename)
+
+print(f"\n {model_filename} created successfully.")
+files.download(model_filename)
