@@ -1,0 +1,73 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import joblib
+from google.colab import files
+import io
+
+
+print("Please upload 'Dashboard_Monitoring_10k_Proper_TS (2).csv':")
+uploaded = files.upload()
+
+filename = list(uploaded.keys())[0]
+df = pd.read_csv(io.BytesIO(uploaded[filename]))
+print(f"Successfully loaded: {filename}")
+
+
+features = ['Moisture_Percent', 'Temp_C', 'Pressure_hPa', 'Water_Flow_Lmin', 'Rain_Signal']
+X = df[features]
+y = df['Pump_Status'].map({'ON': 1, 'OFF': 0}).values
+
+
+np.random.seed(42)
+noise_level = 0.015
+noise_idx = np.random.choice(len(y), size=int(noise_level * len(y)), replace=False)
+y_noisy = y.copy()
+y_noisy[noise_idx] = 1 - y_noisy[noise_idx]
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y_noisy, test_size=0.2, random_state=42)
+
+
+rf_model = RandomForestClassifier(n_estimators=100, max_depth=15, min_samples_leaf=2, random_state=42)
+rf_model.fit(X_train, y_train)
+
+
+y_pred = rf_model.predict(X_test)
+print(f"\nFinal Model Accuracy: {accuracy_score(y_test, y_pred) * 100:.2f}%")
+
+
+def run_dashboard_test(case_num, pressure, temperature, moisture, flow, rain):
+    input_df = pd.DataFrame([[moisture, temperature, pressure, flow, rain]], columns=features)
+    prediction = rf_model.predict(input_df)[0]
+
+
+    pump_status = "ON" if prediction == 1 else "OFF"
+
+
+    if rain == 1:
+        weather_alert = "rain alert"
+        pump_status = "OFF"
+    else:
+        weather_alert = "no rain"
+
+    print(f"Case {case_num}: pressure {pressure} and temperature {temperature} then pump status = \"{pump_status}\"")
+    print(f"        -> Weather Detail: {weather_alert}")
+    print(f"        -> Sensor Data: Moisture {moisture}%, Flow {flow} L/min, Rain Signal {rain}\n")
+
+
+print("\n--- ML DASHBOARD PREDICTION RESULTS ---\n")
+
+run_dashboard_test(1, pressure=901.5, temperature=36.2, moisture=20.0, flow=0.0, rain=0)
+run_dashboard_test(2, pressure=898.4, temperature=34.0, moisture=25.5, flow=0.0, rain=1)
+run_dashboard_test(3, pressure=900.0, temperature=21.5, moisture=72.0, flow=1.2, rain=0)
+run_dashboard_test(4, pressure=896.8, temperature=28.0, moisture=45.0, flow=0.0, rain=1)
+run_dashboard_test(5, pressure=902.1, temperature=35.5, moisture=18.5, flow=0.0, rain=0)
+
+
+model_filename = 'Intelligent_Irrigation_System.pkl'
+joblib.dump(rf_model, model_filename)
+print(f"Success! Model saved as {model_filename}")
+files.download(model_filename)
